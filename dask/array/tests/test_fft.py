@@ -39,10 +39,8 @@ all_nd_funcnames = [
     "irfftn",
 ]
 
-nparr = np.arange(100).reshape(10, 10)
-darr = da.from_array(nparr, chunks=(1, 10))
-darr2 = da.from_array(nparr, chunks=(10, 1))
-darr3 = da.from_array(nparr, chunks=(10, 10))
+nparr = np.arange(504).reshape(7, 9, 8)
+darr = da.from_array(nparr, chunks=(1, 1, 8))
 
 
 @pytest.mark.parametrize("funcname", all_1d_funcnames)
@@ -60,6 +58,7 @@ def test_fft(funcname):
     da_fft = getattr(da.fft, funcname)
     np_fft = getattr(np.fft, funcname)
 
+    darr = da.from_array(nparr, chunks=(1, 1, 8))
     assert_eq(da_fft(darr),
               np_fft(nparr))
 
@@ -68,13 +67,15 @@ def test_fft(funcname):
 def test_fft2n_shapes(funcname):
     da_fft = getattr(dask.array.fft, funcname)
     np_fft = getattr(np.fft, funcname)
+
+    darr = da.from_array(nparr, chunks=(7, 9, 1))
     assert_eq(da_fft(darr3),
               np_fft(nparr))
     assert_eq(da_fft(darr3, (8, 9)),
               np_fft(nparr, (8, 9)))
     assert_eq(da_fft(darr3, (8, 9), axes=(1, 0)),
               np_fft(nparr, (8, 9), axes=(1, 0)))
-    assert_eq(da_fft(darr3, (12, 11), axes=(1, 0)),
+    assert_eq(da_fft(darr, (12, 11), axes=(1, 0)),
               np_fft(nparr, (12, 11), axes=(1, 0)))
 
 
@@ -83,17 +84,18 @@ def test_fft_n_kwarg(funcname):
     da_fft = getattr(da.fft, funcname)
     np_fft = getattr(np.fft, funcname)
 
+    darr = da.from_array(nparr, chunks=(7, 1, 1))
     assert_eq(da_fft(darr, 5),
               np_fft(nparr, 5))
     assert_eq(da_fft(darr, 13),
               np_fft(nparr, 13))
-    assert_eq(da_fft(darr2, axis=0),
+    assert_eq(da_fft(darr, axis=0),
               np_fft(nparr, axis=0))
-    assert_eq(da_fft(darr2, 5, axis=0),
+    assert_eq(da_fft(darr, 5, axis=0),
               np_fft(nparr, 5, axis=0))
-    assert_eq(da_fft(darr2, 13, axis=0),
+    assert_eq(da_fft(darr, 13, axis=0),
               np_fft(nparr, 13, axis=0))
-    assert_eq(da_fft(darr2, 12, axis=0),
+    assert_eq(da_fft(darr, 12, axis=0),
               np_fft(nparr, 12, axis=0))
 
 
@@ -101,6 +103,7 @@ def test_fft_n_kwarg(funcname):
 def test_fft_consistent_names(funcname):
     da_fft = getattr(da.fft, funcname)
 
+    darr = da.from_array(nparr, chunks=(7, 9, 1))
     assert same_keys(da_fft(darr, 5), da_fft(darr, 5))
     assert same_keys(da_fft(darr2, 5, axis=0), da_fft(darr2, 5, axis=0))
     assert not same_keys(da_fft(darr, 5), da_fft(darr, 13))
