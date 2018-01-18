@@ -20,7 +20,7 @@ buffers = [
 
 @pytest.mark.parametrize('x', buffers)
 def test_hash_buffer(x):
-    for hasher in [None] + hashers:
+    for hasher in [None] + list(hashers.values()):
         h = hash_buffer(x, hasher=hasher)
         assert isinstance(h, bytes)
         assert 8 <= len(h) < 32
@@ -29,14 +29,14 @@ def test_hash_buffer(x):
 
 @pytest.mark.parametrize('x', buffers)
 def test_hash_buffer_hex(x):
-    for hasher in [None] + hashers:
+    for hasher in [None] + list(hashers.values()):
         h = hash_buffer_hex(x, hasher=hasher)
         assert isinstance(h, str)
         assert 16 <= len(h) < 64
         assert h == hash_buffer_hex(x, hasher=hasher)
 
 
-@pytest.mark.parametrize('hasher', hashers)
+@pytest.mark.parametrize('hasher', list(hashers.values()))
 def test_hashers(hasher):
     # Sanity check
     x = b'x'

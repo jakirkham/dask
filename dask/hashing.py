@@ -2,10 +2,11 @@ from __future__ import absolute_import, division, print_function
 
 import binascii
 import hashlib
+from collections import OrderedDict as odict
 import sys
 
 
-hashers = []  # In decreasing performance order
+hashers = odict()  # In decreasing performance order
 
 
 # Timings on a largish array:
@@ -33,7 +34,7 @@ else:
             else:
                 return binascii.a2b_hex('%032x' % h)
 
-        hashers.append(_hash_cityhash)
+        hashers["cityhash"] = _hash_cityhash
 
 try:
     import xxhash  # `pip install xxhash`
@@ -46,7 +47,7 @@ else:
         """
         return xxhash.xxh64(buf).digest()
 
-    hashers.append(_hash_xxhash)
+    hashers["xxhash"] = _hash_xxhash
 
 try:
     import mmh3  # `pip install mmh3`
@@ -59,7 +60,7 @@ else:
         """
         return mmh3.hash_bytes(buf)
 
-    hashers.append(_hash_murmurhash)
+    hashers["murmurhash"] = _hash_murmurhash
 
 
 def _hash_sha1(buf):
@@ -69,7 +70,7 @@ def _hash_sha1(buf):
     return hashlib.sha1(buf).digest()
 
 
-hashers.append(_hash_sha1)
+hashers["sha1"] = _hash_sha1
 
 
 def hash_buffer(buf, hasher=None):
@@ -85,7 +86,7 @@ def hash_buffer(buf, hasher=None):
             # Some hash libraries may have overly-strict type checking,
             # not accepting all buffers
             pass
-    for hasher in hashers:
+    for hasher in hashers.values():
         try:
             return hasher(buf)
         except (TypeError, OverflowError):
