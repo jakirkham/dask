@@ -10,6 +10,7 @@ Array
 
 - Add ``piecewise`` for Dask Arrays (:pr:`3350`) `John A Kirkham`_
 - Fix handling of ``nan`` in ``broadcast_shapes`` (:pr:`3356`) `John A Kirkham`_
+- Support Dask Arrays with `vindex` (:pr:`3210`) `John A Kirkham`_
 
 DataFrame
 +++++++++
