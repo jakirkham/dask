@@ -3469,8 +3469,14 @@ def _vindex(x, *indexes):
     >>> result.compute()
     array([ 0,  9, 48,  7])
     """
+
     indexes = replace_ellipsis(x.ndim, indexes)
 
+    if any(isinstance(ind, Array) for ind in indexes):
+        return _vindex_dask_arrays(x, *indexes)
+
+    num_indexes = {i: ind for i, ind in enumerate(indexes)
+                   if isinstance(ind, Number)}
     num_indexes = []
     partial_slices = []
     reduced_indexes = []
@@ -3514,6 +3520,78 @@ def _vindex(x, *indexes):
         x = _vindex_array(x, array_indexes)
 
     return x
+
+
+def _vindex_dask_arrays(x, *indices):
+    """Point wise indexing with Dask Arrays"""
+
+    from .creation import arange
+
+    x = asarray(x)
+
+    oth_inds = []
+    arr_inds = []
+    out_axes = []
+    res_shape = []
+    for i, ind in enumerate(indices):
+        if isinstance(ind, Array):
+            oth_inds.append(slice(None))
+            arr_inds.append(asarray(ind))
+            res_shape.extend(ind.shape)
+            if 0 not in out_axes:
+                out_axes.append(0)
+        elif isinstance(ind, Number):
+            oth_inds.append(ind)
+        else:
+            oth_inds.append(ind)
+            arr_inds.append(slice(None))
+            out_axes.append(len(arr_inds))
+            res_shape.append(x.shape[i])
+    oth_inds = tuple(oth_inds)
+    arr_inds = tuple(arr_inds)
+    out_axes = tuple(out_axes)
+    res_shape = tuple(res_shape)
+
+    if not all(o == slice(None) for o in oth_inds):
+        x = x.vindex[oth_inds]
+
+    x_inds = tuple(
+        arange(s, chunks=c) for s, c in zip(x.shape, x.chunks)
+    )
+
+    idx_vals = atop(
+        _vindex_dask_arrays_chunk,
+        out_axes,
+        x, tuple(range(1, 1 + x.ndim)),
+        *concat([
+            (e_0.ravel(), (0,), e_i, (i,)) if isinstance(e_0, Array) else
+            (e_0, None, e_i, (i,))
+            for i, (e_0, e_i) in enumerate(zip(arr_inds, x_inds), start=1)
+        ]),
+        dtype=x.dtype,
+        concatenate=True
+    )
+
+    idx_vals = idx_vals.reshape(res_shape)
+
+    return idx_vals
+
+
+def _vindex_dask_arrays_chunk(xc, *args):
+    inds = args[::2]
+    x_inds = args[1::2]
+
+    xc_inds = []
+    for i, (e_0, e_i) in enumerate(zip(inds, x_inds)):
+        if isinstance(e_0, np.ndarray):
+            xc_inds.append(np.searchsorted(e_i, e_0))
+        else:
+            xc_inds.append(e_0)
+    xc_inds = tuple(xc_inds)
+
+    vals = xc[xc_inds]
+
+    return vals
 
 
 def _vindex_array(x, dict_indexes):
