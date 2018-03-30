@@ -3472,11 +3472,6 @@ def _vindex(x, *indexes):
 
     indexes = replace_ellipsis(x.ndim, indexes)
 
-    if any(isinstance(ind, Array) for ind in indexes):
-        return _vindex_dask_arrays(x, *indexes)
-
-    num_indexes = {i: ind for i, ind in enumerate(indexes)
-                   if isinstance(ind, Number)}
     num_indexes = []
     partial_slices = []
     reduced_indexes = []
@@ -3502,8 +3497,12 @@ def _vindex(x, *indexes):
     if partial_slices:
         x = x[partial_slices]
 
-    array_indexes = {}
+    numpy_array_indexes = {}
+    dask_array_indexes = {}
     for i, (ind, size) in enumerate(zip(reduced_indexes, x.shape)):
+        if isinstance(ind, Array):
+            ind %= size
+            dask_array_indexes[i] = ind
         if not isinstance(ind, slice):
             ind = np.array(ind, copy=True)
             if ind.dtype.kind == 'b':
@@ -3514,15 +3513,18 @@ def _vindex(x, *indexes):
                                  'indexing along axis %s of size %s: %r'
                                  % (i, size, ind))
             ind %= size
-            array_indexes[i] = ind
+            numpy_array_indexes[i] = ind
 
-    if array_indexes:
-        x = _vindex_array(x, array_indexes)
+    if numpy_array_indexes:
+        x = _vindex_array(x, numpy_array_indexes)
+
+    if dask_array_indexes:
+        return _vindex_dask_arrays(x, dask_array_indexes)
 
     return x
 
 
-def _vindex_dask_arrays(x, *indices):
+def _vindex_dask_arrays(x, dict_indices):
     """ Point wise indexing with Dask Arrays
 
     Makes two passes of the data. First pass with all static values: integers,
@@ -3535,67 +3537,27 @@ def _vindex_dask_arrays(x, *indices):
 
     from .creation import arange
 
-    x = asarray(x)
+    out_shape = broadcast_shapes(*[v.shape for v in dict_indices.values()])
+    out_ndim = len(out_shape)
 
-    # Extract selections for the first pass and second pass.
-    # Also collect axes that are part of the result.
-    # Finally find the result shape due to multidimensional indices.
-    #
-    # * oth_inds -- used for first pass
-    # * arr_inds -- used for second pass
-    # * out_axes -- track where each
-    # * res_shape -- track shape due to multidimensional indices
-    #
-    oth_inds = []
-    arr_inds = []
-    out_axes = []
-    res_shape = []
-    for i, ind in enumerate(indices):
-        if isinstance(ind, Array):
-            oth_inds.append(slice(None))
-            arr_inds.append(asarray(ind))
-            res_shape.extend(ind.shape)
-            if 0 not in out_axes:
-                out_axes.append(0)
-        elif isinstance(ind, Number):
-            oth_inds.append(ind)
-        else:
-            oth_inds.append(ind)
-            arr_inds.append(slice(None))
-            out_axes.append(len(arr_inds))
-            res_shape.append(x.shape[i])
-    oth_inds = tuple(oth_inds)
-    arr_inds = tuple(arr_inds)
-    out_axes = tuple(out_axes)
-    res_shape = tuple(res_shape)
-
-    # Apply first pass of vindex
-    if not all(o == slice(None) for o in oth_inds):
-        x = x.vindex[oth_inds]
-
-    # Find indices for all points in x to aid in selection within chunks
-    x_inds = tuple(
-        arange(s, chunks=c) for s, c in zip(x.shape, x.chunks)
-    )
+    x_indices = tuple(arange(s, chunks=c) for s, c in zip(x.shape, x.chunks))
+    indices = tuple(dict_indices.get(i, slice(None)) for i in range(x.ndim))
 
     # Use global indices for reference in applying selected indices relative
     # to each chunk. For static values applied in the first pass, pass along
     # a dummy scalar value to notify the chunk should be kept unchanged.
+    out_axes = tuple(range(out_ndim))
     idx_vals = atop(
-        _vindex_dask_arrays_chunk,
-        out_axes,
-        x, tuple(range(1, 1 + x.ndim)),
+        _vindex_dask_arrays_chunk, out_axes,
+        x, tuple(range(out_ndim, out_ndim + x.ndim)),
         *concat([
-            (e_0.ravel(), (0,), e_i, (i,)) if isinstance(e_0, Array) else
-            (e_0, None, e_i, (i,))
-            for i, (e_0, e_i) in enumerate(zip(arr_inds, x_inds), start=1)
+            (ex, (i,), ei, out_axes[:ei.ndim]) if isinstance(ei, Array) else
+            (ex, (i,), ei, None)
+            for i, (ex, ei) in enumerate(zip(x_indices, indices), out_ndim)
         ]),
         dtype=x.dtype,
         concatenate=True
     )
-
-    # Handle N-D index arrays with N > 1.
-    idx_vals = idx_vals.reshape(res_shape)
 
     return idx_vals
 
@@ -3610,18 +3572,18 @@ def _vindex_dask_arrays_chunk(xc, *args):
     """
 
     # Unpack interwoven reference indices and selection indices.
-    inds = args[::2]
-    x_inds = args[1::2]
+    xc_indices = args[::2]
+    c_indices = args[1::2]
 
-    xc_inds = []
-    for i, (e_0, e_i) in enumerate(zip(inds, x_inds)):
-        if isinstance(e_0, np.ndarray):
-            xc_inds.append(np.searchsorted(e_i, e_0))
+    indices = []
+    for i, (exc, eic) in enumerate(zip(xc_indices, c_indices)):
+        if isinstance(eic, np.ndarray):
+            indices.append(np.searchsorted(exc, eic))
         else:
-            xc_inds.append(e_0)
-    xc_inds = tuple(xc_inds)
+            indices.append(eic)
+    indices = tuple(indices)
 
-    vals = xc[xc_inds]
+    vals = xc[indices]
 
     return vals
 
