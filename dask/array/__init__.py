@@ -53,6 +53,6 @@ from .rechunk import rechunk
 from ..context import set_options
 from ..base import compute
 from .optimization import optimize
-from .creation import (arange, linspace, meshgrid, indices, diag, eye,
-                       triu, tril, fromfunction, tile, repeat)
+from .creation import (arange, linspace, meshgrid, mgrid, ogrid, indices, diag,
+                       eye, triu, tril, fromfunction, tile, repeat)
 from .gufunc import apply_gufunc, gufunc, as_gufunc
