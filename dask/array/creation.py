@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function
 from functools import partial, wraps
 from itertools import product
 from operator import add
-from numbers import Integral
+from numbers import Integral, Real
 
 import numpy as np
 from toolz import accumulate, sliding_window
@@ -337,6 +337,39 @@ def meshgrid(*xi, **kwargs):
         grid[0], grid[1] = grid[1], grid[0]
 
     return grid
+
+
+class _grid(object):
+    def __init__(self, sparse):
+        self.sparse = sparse
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            key = (key,)
+
+        key = tuple(
+            slice(
+                0 if k.start is None else k.start,
+                k.stop,
+                1 if k.step is None else k.step
+            )
+            for k in key
+        )
+
+        xs = []
+        for k in key:
+            if isinstance(k.step, Real):
+                xs.append(arange(k.start, k.stop, k.step))
+            else:
+                xs.append(linspace(k.start, k.stop, k.step.imag))
+
+        r = meshgrid(*xs, indexing="ij", sparse=self.sparse)
+
+        return r
+
+
+mgrid = _grid(sparse=False)
+ogrid = _grid(sparse=True)
 
 
 def indices(dimensions, dtype=int, chunks=None):
