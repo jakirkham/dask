@@ -882,48 +882,30 @@ def pad_stats(array, pad_width, mode, *args):
 
     stat_length = expand_pad_value(array, args[0])
 
-    result = np.empty(array.ndim * (3,), dtype=object)
-    for idx in np.ndindex(result.shape):
-        axes = []
-        select = []
-        pad_shape = []
-        pad_chunks = []
-        for d, (i, s, c, w, l) in enumerate(zip(
-            idx, array.shape, array.chunks, pad_width, stat_length
-        )):
-            if i < 1:
-                axes.append(d)
-                select.append(slice(None, l[0], None))
-                pad_shape.append(w[0])
-                pad_chunks.append(w[0])
-            elif i > 1:
-                axes.append(d)
-                select.append(slice(s - l[1], None, None))
-                pad_shape.append(w[1])
-                pad_chunks.append(w[1])
-            else:
-                select.append(slice(None))
-                pad_shape.append(s)
-                pad_chunks.append(c)
+    result = array
+    for d in range(array.ndim):
+        pad_shapes, pad_chunks = get_pad_shapes_chunks(d, result, pad_width)
 
-        axes = tuple(axes)
-        select = tuple(select)
-        pad_shape = tuple(pad_shape)
-        pad_chunks = tuple(pad_chunks)
+        pad_slices = [result.ndim * [slice(None)], result.ndim * [slice(None)]]
+        pad_slices[0][d] = slice(None, stat_length[d][0], None)
+        pad_slices[1][d] = slice(-stat_length[d][1], None, None)
+        pad_slices = [tuple(sl) for sl in pad_slices]
 
-        result_idx = array[select]
+        pad_arrays = [result[sl] for sl in pad_slices]
+
         if mode == "maximum":
-            result_idx = result_idx.max(axis=axes, keepdims=True)
+            pad_arrays = [a.max(axis=d, keepdims=True) for a in pad_arrays]
         elif mode == "mean":
-            result_idx = result_idx.mean(axis=axes, keepdims=True)
+            pad_arrays = [a.mean(axis=d, keepdims=True) for a in pad_arrays]
         elif mode == "minimum":
-            result_idx = result_idx.min(axis=axes, keepdims=True)
+            pad_arrays = [a.min(axis=d, keepdims=True) for a in pad_arrays]
 
-        result_idx = broadcast_to(result_idx, pad_shape, chunks=pad_chunks)
+        pad_arrays = [
+            broadcast_to(a, s, c)
+            for (a, s, c) in zip(pad_arrays, pad_shapes, pad_chunks)
+        ]
 
-        result[idx] = result_idx
-
-    result = block(result.tolist())
+        result = concatenate([pad_arrays[0], result, pad_arrays[1]], axis=d)
 
     return result
 
