@@ -721,6 +721,24 @@ def expand_pad_value(array, pad_value):
     return pad_value
 
 
+def get_pad_shapes_chunks(dim, array, pad_width):
+    """
+    Helper function for finding shapes and chunks of end pads.
+    """
+
+    pad_shapes = [list(array.shape), list(array.shape)]
+    pad_chunks = [list(array.chunks), list(array.chunks)]
+
+    for i in range(2):
+        pad_shapes[i][dim] = pad_width[dim][i]
+        pad_chunks[i][dim] = (pad_width[dim][i],)
+
+    pad_shapes = [tuple(s) for s in pad_shapes]
+    pad_chunks = [tuple(c) for c in pad_chunks]
+
+    return pad_shapes, pad_chunks
+
+
 def linear_ramp_chunk(start, stop, num, dim, step):
     """
     Helper function to find the linear ramp for a chunk.
@@ -756,16 +774,7 @@ def pad_edge(array, pad_width, mode, *args):
 
     result = array
     for d in range(array.ndim):
-        pad_shapes = [list(result.shape), list(result.shape)]
-        pad_chunks = [list(result.chunks), list(result.chunks)]
-
-        for i in range(2):
-            pad_shapes[i][d] = pad_width[d][i]
-            pad_chunks[i][d] = (pad_width[d][i],)
-
-        pad_shapes = [tuple(s) for s in pad_shapes]
-        pad_chunks = [tuple(c) for c in pad_chunks]
-
+        pad_shapes, pad_chunks = get_pad_shapes_chunks(d, result, pad_width)
         pad_arrays = [result, result]
 
         if mode is "constant":
