@@ -834,41 +834,36 @@ def pad_reuse(array, pad_width, mode, *args):
             "`pad` does not support `reflect_type` of `odd`."
         )
 
-    result = np.empty(array.ndim * (3,), dtype=object)
-    for idx in np.ndindex(result.shape):
-        select = []
-        orient = []
-        for i, s, pw in zip(idx, array.shape, pad_width):
-            if mode == "wrap":
-                pw = pw[::-1]
+    result = array
+    for d, pw in enumerate(pad_width):
+        lower_sl = array.ndim * [slice(None)]
+        upper_sl = array.ndim * [slice(None)]
 
-            if i < 1:
-                if mode == "reflect":
-                    select.append(slice(1, pw[0] + 1, None))
-                else:
-                    select.append(slice(None, pw[0], None))
-            elif i > 1:
-                if mode == "reflect":
-                    select.append(slice(s - pw[1] - 1, s - 1, None))
-                else:
-                    select.append(slice(s - pw[1], None, None))
-            else:
-                select.append(slice(None))
+        if mode is "reflect":
+            lower_sl[d] = slice(1, pw[0] + 1, None)
+            upper_sl[d] = slice(-pw[1] - 1, -1, None)
+        elif mode is "symmetric":
+            lower_sl[d] = slice(None, pw[0], None)
+            upper_sl[d] = slice(-pw[1], None, None)
+        else:
+            lower_sl[d] = slice(-pw[0], None, None)
+            upper_sl[d] = slice(None, pw[1], None)
 
-            if i != 1 and mode in ["reflect", "symmetric"]:
-                orient.append(slice(None, None, -1))
-            else:
-                orient.append(slice(None))
+        lower_sl = tuple(lower_sl)
+        upper_sl = tuple(upper_sl)
 
-        select = tuple(select)
-        orient = tuple(orient)
+        lower_pad = result[lower_sl]
+        upper_pad = result[upper_sl]
 
-        if mode == "wrap":
-            idx = tuple(2 - i for i in idx)
+        if mode is not "wrap":
+            flip_sl = array.ndim * [slice(None)]
+            flip_sl[d] = slice(None, None, -1)
+            flip_sl = tuple(flip_sl)
 
-        result[idx] = array[select][orient]
+            lower_pad = lower_pad[flip_sl]
+            upper_pad = upper_pad[flip_sl]
 
-    result = block(result.tolist())
+        result = concatenate([lower_pad, result, upper_pad], axis=d)
 
     return result
 
