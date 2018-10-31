@@ -745,24 +745,42 @@ def linear_ramp_chunk(edge_array, end_values, pad_width, steps, axes):
     Helper function to find the linear ramp for a chunk.
     """
 
-    num1 = num + 1
-    pad_width1 = tuple(
+    pad_width1 = tuple(pw + 1 for pw in pad_width)
 
-    result_shape = list(edge_array.shape)
+    shape = list(edge_array.shape)
     for d in axes:
-        result_shape[d] = pad_width[d]
-    result_shape = tuple(result_shape)
+        shape[d] = pad_width[d]
+    shape = tuple(shape)
 
     dtype = np.dtype(start.dtype)
 
-    result = np.empty(result_shape, dtype=dtype)
+    result = np.empty(shape, dtype=dtype)
+
+    for d in axes[1:]:
+        i = tuple(-(s + 1) // 2 for s in steps)
+
+        j = list(i)
+        j[d] = slice(None)
+        j = tuple(j)
+
+        ramp_j = np.linspace(
+            edge_array[i], end_values[i], pad_width1[i], dtype=dtype
+        )
+
+
+
     for i in np.ndindex(edge_array.shape):
         j = list(i)
         for d in axes:
             j[d] = slice(None)
         j = tuple(j)
 
-        result[j] = np.linspace(edge_array[i], end_values[i], num1, dtype=dtype)[1:][::step]
+        ramp_j = np.linspace(
+            edge_array[i], end_values[i], pad_width1[i], dtype=dtype
+        )
+        ramp_j = ramp_j[1:][::step]
+
+        result[j] = ramp_j
 
     return result
 
