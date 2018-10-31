@@ -13,7 +13,7 @@ from ..base import tokenize
 from ..compatibility import Sequence
 from . import chunk
 from .core import (Array, asarray, normalize_chunks,
-                   stack, concatenate, block,
+                   stack, concatenate,
                    broadcast_to, broadcast_arrays)
 from .wrap import empty, ones, zeros, full
 
