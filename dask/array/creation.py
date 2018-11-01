@@ -740,6 +740,68 @@ def get_pad_shapes_chunks(array, pad_width, axes):
     return pad_shapes, pad_chunks
 
 
+def pad_edge(array, pad_width, mode, *args):
+    """
+    Helper function for padding edges.
+
+    Handles the cases where the only the values on the edge are needed.
+    """
+
+    args = tuple(expand_pad_value(array, e) for e in args)
+
+    if mode is "constant":
+        constant_values = args[0]
+        constant_values = tuple(
+            tuple(asarray(v).astype(array.dtype) for v in p)
+            for p in constant_values
+        )
+
+    result = np.empty(array.ndim * (3,), dtype=object)
+    for idx in np.ndindex(result.shape):
+        axes = []
+        select = []
+        pad_shape = []
+        pad_chunks = []
+        for d, (i, s, c, w, l) in enumerate(zip(
+            idx, array.shape, array.chunks, pad_width, stat_length
+        )):
+            if i < 1:
+                axes.append(d)
+                select.append(slice(None, l[0], None))
+                pad_shape.append(w[0])
+                pad_chunks.append(w[0])
+            elif i > 1:
+                axes.append(d)
+                select.append(slice(s - l[1], None, None))
+                pad_shape.append(w[1])
+                pad_chunks.append(w[1])
+            else:
+                select.append(slice(None))
+                pad_shape.append(s)
+                pad_chunks.append(c)
+
+        axes = tuple(axes)
+        select = tuple(select)
+        pad_shape = tuple(pad_shape)
+        pad_chunks = tuple(pad_chunks)
+
+        result_idx = array[select]
+        if mode == "maximum":
+            result_idx = result_idx.max(axis=axes, keepdims=True)
+        elif mode == "mean":
+            result_idx = result_idx.mean(axis=axes, keepdims=True)
+        elif mode == "minimum":
+            result_idx = result_idx.min(axis=axes, keepdims=True)
+
+        result_idx = broadcast_to(result_idx, pad_shape, chunks=pad_chunks)
+
+        result[idx] = result_idx
+
+    result = block(result.tolist())
+
+    return result
+
+
 def linear_ramp_chunk(start, stop, num, dim, step):
     """
     Helper function to find the linear ramp for a chunk.
@@ -764,9 +826,9 @@ def linear_ramp_chunk(start, stop, num, dim, step):
     return result
 
 
-def pad_edge(array, pad_width, mode, *args):
+def pad_linear_ramp(array, pad_width, mode, *args):
     """
-    Helper function for padding edges.
+    Helper function for padding with linear ramps.
 
     Handles the cases where the only the values on the edge are needed.
     """
@@ -775,46 +837,31 @@ def pad_edge(array, pad_width, mode, *args):
 
     result = array
     for d in range(array.ndim):
-        pad_shapes, pad_chunks = get_pad_shapes_chunks(result, pad_width, (d,))
+        pad_chunks = [list(array.chunks), list(array.chunks)]
+        for i in range(2):
+            pad_chunks[i][d] = (pad_width[d][i],)
+        pad_chunks = [tuple(c) for c in pad_chunks]
+
         pad_arrays = [result, result]
 
-        if mode is "constant":
-            constant_values = args[0][d]
-            constant_values = [
-                asarray(c).astype(result.dtype) for c in constant_values
-            ]
+        pad_slices = [result.ndim * [slice(None)], result.ndim * [slice(None)]]
+        pad_slices[0][d] = slice(None, 1, None)
+        pad_slices[1][d] = slice(-1, None, None)
+        pad_slices = [tuple(sl) for sl in pad_slices]
 
-            pad_arrays = [
-                broadcast_to(v, s, c)
-                for v, s, c in zip(constant_values, pad_shapes, pad_chunks)
-            ]
-        elif mode in ["edge", "linear_ramp"]:
-            pad_slices = [
-                result.ndim * [slice(None)], result.ndim * [slice(None)]
-            ]
-            pad_slices[0][d] = slice(None, 1, None)
-            pad_slices[1][d] = slice(-1, None, None)
-            pad_slices = [tuple(sl) for sl in pad_slices]
+        pad_arrays = [result[sl] for sl in pad_slices]
 
-            pad_arrays = [result[sl] for sl in pad_slices]
+        end_values = args[0][d]
 
-            if mode is "edge":
-                pad_arrays = [
-                    broadcast_to(a, s, c)
-                    for a, s, c in zip(pad_arrays, pad_shapes, pad_chunks)
-                ]
-            elif mode is "linear_ramp":
-                end_values = args[0][d]
-
-                pad_arrays = [
-                    a.map_blocks(
-                        linear_ramp_chunk, ev, pw,
-                        chunks=c, dtype=result.dtype, dim=d, step=(2 * i - 1)
-                    )
-                    for i, (a, ev, pw, c) in enumerate(
-                        zip(pad_arrays, end_values, pad_width[d], pad_chunks)
-                    )
-                ]
+        pad_arrays = [
+            a.map_blocks(
+                linear_ramp_chunk, ev, pw,
+                chunks=c, dtype=result.dtype, dim=d, step=(2 * i - 1)
+            )
+            for i, (a, ev, pw, c) in enumerate(
+                zip(pad_arrays, end_values, pad_width[d], pad_chunks)
+            )
+        ]
 
         result = concatenate([pad_arrays[0], result, pad_arrays[1]], axis=d)
 
@@ -1003,8 +1050,10 @@ def pad(array, pad_width, mode, **kwargs):
 
     if mode in ["maximum", "mean", "median", "minimum"]:
         return pad_stats(array, pad_width, mode, *kwargs.values())
-    elif mode in ["constant", "edge", "linear_ramp"]:
+    elif mode in ["constant", "edge"]:
         return pad_edge(array, pad_width, mode, *kwargs.values())
+    elif mode is "linear_ramp":
+        return pad_linear_ramp(array, pad_width, mode, *kwargs.values())
     elif mode in ["reflect", "symmetric", "wrap"]:
         return pad_reuse(array, pad_width, mode, *kwargs.values())
     elif callable(mode):
