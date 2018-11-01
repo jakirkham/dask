@@ -721,23 +721,47 @@ def expand_pad_value(array, pad_value):
     return pad_value
 
 
-def get_pad_shapes_chunks(array, pad_width, axes):
+def get_pad_shapes_chunks(array, pad_width):
     """
     Helper function for finding shapes and chunks of end pads.
     """
 
-    pad_shapes = [list(array.shape), list(array.shape)]
-    pad_chunks = [list(array.chunks), list(array.chunks)]
+    pad_shapes = [[s, s, s] for s in array.shape]
+    pad_chunks = [[c, c, c] for c in array.chunks]
 
-    for d in axes:
-        for i in range(2):
-            pad_shapes[i][d] = pad_width[d][i]
-            pad_chunks[i][d] = (pad_width[d][i],)
+    for d in range(array.ndim):
+        for i in range(0, 4, 2):
+            pad_shapes[d][i] = pad_width[d][i]
+            pad_chunks[d][i] = (pad_width[d][i],)
 
-    pad_shapes = [tuple(s) for s in pad_shapes]
-    pad_chunks = [tuple(c) for c in pad_chunks]
+    pad_shapes = tuple(tuple(e) for e in pad_shapes)
+    pad_chunks = tuple(tuple(e) for e in pad_chunks)
 
     return pad_shapes, pad_chunks
+
+
+def pad_const(array, pad_width, mode, constant_values):
+    """
+    Helper function for padding edges.
+
+    Handles the cases where the only the values on the edge are needed.
+    """
+
+    constant_values = expand_pad_value(array, constant_values)
+    pad_shapes, pad_chunks = get_pad_shapes_chunks(array, pad_width)
+
+    result = np.empty(array.ndim * (3,), dtype=object)
+    for idx in np.ndindex(result.shape):
+        if all(i == 0 for i in idx):
+            result[idx] = array
+        else:
+            result[idx] = broadcast_to(
+
+        result[idx] = broadcast_to(
+        tuple(s[i] for i, s in zip(idx, pad_shapes))
+        for d, i in enumerate(idx):
+            pass
+
 
 
 def pad_edge(array, pad_width, mode, *args):
@@ -749,6 +773,7 @@ def pad_edge(array, pad_width, mode, *args):
 
     args = tuple(expand_pad_value(array, e) for e in args)
 
+    pad_arrays = None
     if mode is "constant":
         constant_values = args[0]
         constant_values = tuple(
@@ -756,8 +781,11 @@ def pad_edge(array, pad_width, mode, *args):
             for p in constant_values
         )
 
+
+
     result = np.empty(array.ndim * (3,), dtype=object)
     for idx in np.ndindex(result.shape):
+
         axes = []
         select = []
         pad_shape = []
