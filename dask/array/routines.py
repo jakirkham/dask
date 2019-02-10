@@ -24,7 +24,7 @@ from .ufunc import multiply, sqrt
 from .core import (Array, map_blocks, elemwise, from_array, asarray,
                    asanyarray, concatenate, stack, blockwise, broadcast_shapes,
                    is_scalar_for_elemwise, broadcast_to, tensordot_lookup)
-
+from .reduction import reduction
 from .einsumfuncs import einsum  # noqa
 
 
