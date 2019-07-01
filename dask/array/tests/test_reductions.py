@@ -52,6 +52,7 @@ def test_numel(dtype, keepdims):
 def reduction_1d_test(da_func, darr, np_func, narr, use_dtype=True, split_every=True):
     assert_eq(da_func(darr), np_func(narr))
     assert_eq(da_func(darr, keepdims=True), np_func(narr, keepdims=True))
+    assert da_func(darr, axis=()) is darr
     assert_eq(da_func(darr, axis=()), np_func(narr, axis=()))
     assert same_keys(da_func(darr), da_func(darr))
     assert same_keys(da_func(darr, keepdims=True), da_func(darr, keepdims=True))
@@ -99,6 +100,7 @@ def reduction_2d_test(da_func, darr, np_func, narr, use_dtype=True, split_every=
         warnings.simplefilter("ignore")  # overflow
         assert_eq(da_func(darr), np_func(narr))
         assert_eq(da_func(darr, keepdims=True), np_func(narr, keepdims=True))
+        assert da_func(darr, axis=()) is darr
         assert_eq(da_func(darr, axis=()), np_func(narr, axis=()))
         assert_eq(da_func(darr, axis=0), np_func(narr, axis=0))
         assert_eq(da_func(darr, axis=1), np_func(narr, axis=1))
