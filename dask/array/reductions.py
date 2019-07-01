@@ -138,6 +138,8 @@ def reduction(
         Whether the reduction function should preserve the reduced axes or
         remove them.
     """
+    if axis is ():
+        return x
     if axis is None:
         axis = tuple(range(x.ndim))
     if isinstance(axis, Integral):
