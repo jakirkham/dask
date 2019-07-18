@@ -51,6 +51,12 @@ def array(x, dtype=None, ndmin=None):
     return x
 
 
+@implements(np.copy)
+@derived_from(np)
+def copy(a, order="K"):
+    return a.map_blocks(np.copy, order="K", dtype=a.dtype)
+
+
 @derived_from(np)
 def result_type(*args):
     args = [a if is_scalar_for_elemwise(a) else a.dtype for a in args]
