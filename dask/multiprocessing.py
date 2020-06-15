@@ -1,14 +1,17 @@
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import suppress
 import copyreg
+from functools import partial
 import multiprocessing
 import pickle
 import sys
 import traceback
-from functools import partial
+from functools import lru_cache, partial
 from warnings import warn
 
 from . import config
 from .system import CPU_COUNT
-from .local import reraise, get_async  # TODO: get better get
+from .local import executor_apply_async, reraise, get_async  # TODO: get better get
 from .optimization import fuse, cull
 
 
@@ -146,8 +149,28 @@ def get_context():
             # Only spawn is supported on Win32, can't change it:
             warn(_CONTEXT_UNSUPPORTED, UserWarning)
         return multiprocessing
+    elif sys.version_info[:2] < (3, 7):
+        with suppress(RuntimeError):
+            multiprocessing.set_start_method(context_name)
+        if multiprocessing.get_start_method() != context_name:
+            raise RuntimeError(
+                f"Unable to set multiprocessing context to '{context_name}'"
+            )
+        return multiprocessing
     else:
         return multiprocessing.get_context(context_name)
+
+
+def wrap_func(func, *args, **kwds):
+    """ Ensure worker is initialized (workaround for Python 3.6) """
+    initialize_worker_process()
+    return func(*args, **kwds)
+
+
+def multiprocessing_apply_async(executor, func, args=(), kwds={}, callback=None):
+    """ A apply_async implementation for `concurrent.futures.Executor`s """
+    func = partial(wrap_func, func)
+    executor_apply_async(executor, func=func, args=args, kwds=kwds, callback=callback)
 
 
 def get(
@@ -183,7 +206,10 @@ def get(
     num_workers = num_workers or config.get("num_workers", None) or CPU_COUNT
     if pool is None:
         context = get_context()
-        pool = context.Pool(num_workers, initializer=initialize_worker_process)
+        if sys.version_info[:2] < (3, 7):
+            pool = ProcessPoolExecutor(num_workers)
+        else:
+            pool = ProcessPoolExecutor(num_workers, mp_context=context)
         cleanup = True
     else:
         cleanup = False
@@ -206,8 +232,8 @@ def get(
     try:
         # Run
         result = get_async(
-            pool.apply_async,
-            len(pool._pool),
+            partial(multiprocessing_apply_async, pool),
+            pool._max_workers,
             dsk3,
             keys,
             get_id=_process_get_id,
@@ -219,10 +245,11 @@ def get(
         )
     finally:
         if cleanup:
-            pool.close()
+            pool.shutdown()
     return result
 
 
+@lru_cache(maxsize=1)
 def initialize_worker_process():
     """
     Initialize a worker process before running any tasks in it.
