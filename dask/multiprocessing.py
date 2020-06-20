@@ -10,7 +10,7 @@ from warnings import warn
 
 from . import config
 from .system import CPU_COUNT
-from .local import executor_apply_async, reraise, get_async  # TODO: get better get
+from .local import reraise, get_async  # TODO: get better get
 from .optimization import fuse, cull
 
 
@@ -234,7 +234,7 @@ def get(
     try:
         # Run
         result = get_async(
-            partial(executor_apply_async, pool),
+            pool,
             dsk3,
             keys,
             get_id=_process_get_id,
